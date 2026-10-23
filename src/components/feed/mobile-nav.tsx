@@ -27,7 +27,7 @@ const items: { id: AppView; label: string; icon: typeof LayoutGridIcon }[] = [
 
 export function MobileNav({ view, onViewChange, onReport }: MobileNavProps) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-2 py-2 backdrop-blur-md lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 px-2 py-2 backdrop-blur-md md:hidden">
       <div className="mx-auto grid max-w-lg grid-cols-5 items-center">
         {items.slice(0, 2).map((item) => (
           <NavButton

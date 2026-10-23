@@ -8,5 +8,9 @@ const variants: Record<Status, "outline" | "secondary" | "default"> = {
 };
 
 export function StatusBadge({ status }: { status: Status }) {
-  return <Badge variant={variants[status]}>{statusLabels[status]}</Badge>;
+  return (
+    <Badge variant={variants[status]} className="rounded-md px-2 font-medium">
+      {statusLabels[status]}
+    </Badge>
+  );
 }

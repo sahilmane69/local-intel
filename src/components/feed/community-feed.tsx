@@ -1,14 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import {
-  CompassIcon,
-  MenuIcon,
-  PlusIcon,
-  SearchIcon,
-  UserRoundIcon,
-} from "lucide-react";
+import { CompassIcon, MenuIcon, PlusIcon, SearchIcon, UserRoundIcon } from "lucide-react";
+import { toast } from "sonner";
 
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,31 +21,34 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import {
-  mockIssues,
   neighborhoods,
   type Category,
   type Issue,
   type Neighborhood,
 } from "@/data/issues";
+import { enrichNewPost, getMockPosts } from "@/repositories/posts";
 
 import { AppSidebar } from "./app-sidebar";
 import { CategoryFilters } from "./category-filters";
-import { IssueCard } from "./issue-card";
 import { LocationSelector } from "./location-selector";
 import { MobileNav } from "./mobile-nav";
+import { PostItem } from "./post-item";
 import { ReportIssueDialog } from "./report-issue-dialog";
 import type { AppView } from "./types";
+import { useSidebarCollapsed } from "./use-sidebar-collapsed";
 
 export function CommunityFeed() {
-  const [issues, setIssues] = useState<Issue[]>(mockIssues);
+  const [issues, setIssues] = useState<Issue[]>(() => getMockPosts());
   const [savedIds, setSavedIds] = useState<string[]>(["iss-102", "iss-104"]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | "all">("all");
   const [location, setLocation] = useState<Neighborhood | "all">("all");
   const [view, setView] = useState<AppView>("feed");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed();
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -63,7 +62,8 @@ export function CommunityFeed() {
           needle.length === 0 ||
           issue.title.toLowerCase().includes(needle) ||
           issue.description.toLowerCase().includes(needle) ||
-          issue.address.toLowerCase().includes(needle);
+          issue.address.toLowerCase().includes(needle) ||
+          (issue.tags ?? []).some((tag) => tag.toLowerCase().includes(needle));
         const matchesSaved = view !== "saved" || savedIds.includes(issue.id);
         const matchesNearby =
           view !== "nearby" ||
@@ -106,42 +106,71 @@ export function CommunityFeed() {
     );
   }
 
-  function addIssue(issue: Issue) {
-    setIssues((current) => [issue, ...current]);
+  function addComment(postId: string, body: string, parentId: string | null) {
+    setIssues((current) =>
+      current.map((issue) => {
+        if (issue.id !== postId) return issue;
+        const comments = [
+          ...(issue.comments ?? []),
+          {
+            id: `c-${crypto.randomUUID()}`,
+            postId,
+            parentId,
+            body,
+            createdAt: new Date().toISOString(),
+            author: { name: "Alex Chen", initials: "AC" },
+          },
+        ];
+        return { ...issue, comments, commentCount: comments.length };
+      })
+    );
+  }
+
+  async function addIssue(issue: Issue) {
+    const next = await enrichNewPost(issue);
+    setIssues((current) => [next, ...current]);
     setView("feed");
     setCategory("all");
     setQuery("");
+    toast.message("Using local mock data. Supabase is not connected.");
   }
 
   const headings: Record<AppView, { title: string; subtitle: string }> = {
     feed: {
       title: "Community feed",
-      subtitle: "Issues neighbors are tracking in Fairview.",
+      subtitle: "Neighborhood reports in Fairview",
     },
     nearby: {
       title: "Nearby",
       subtitle:
         location === "all"
-          ? "Open reports closest to the downtown core."
-          : `Reports currently tagged in ${location}.`,
+          ? "Reports closest to the downtown core"
+          : `Reports tagged in ${location}`,
     },
     map: {
       title: "Neighborhoods",
-      subtitle: "Jump into a district and scan its open reports.",
+      subtitle: "Open reports by district",
     },
     saved: {
       title: "Saved",
-      subtitle: "Issues you want to follow.",
+      subtitle: "Issues you are following",
     },
     profile: {
       title: "Profile",
-      subtitle: "Your local reporting activity.",
+      subtitle: "Your local reporting activity",
     },
   };
 
+  const showFilters = view !== "profile" && view !== "map";
+
   return (
     <div className="min-h-full bg-background">
-      <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-sidebar lg:block">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 hidden border-r bg-sidebar transition-[width] duration-200 ease-in-out lg:block",
+          sidebarCollapsed ? "w-[4.5rem]" : "w-64"
+        )}
+      >
         <AppSidebar
           view={view}
           onViewChange={setView}
@@ -149,10 +178,12 @@ export function CommunityFeed() {
           onLocationChange={setLocation}
           openCount={openCount}
           savedCount={savedIds.length}
+          collapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
         />
       </aside>
 
-      <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-72 p-0">
           <SheetHeader className="sr-only">
             <SheetTitle>Navigation</SheetTitle>
@@ -161,7 +192,7 @@ export function CommunityFeed() {
             view={view}
             onViewChange={(next) => {
               setView(next);
-              setSidebarOpen(false);
+              setMobileNavOpen(false);
             }}
             location={location}
             onLocationChange={setLocation}
@@ -171,74 +202,104 @@ export function CommunityFeed() {
         </SheetContent>
       </Sheet>
 
-      <div className="lg:pl-64">
+      <div
+        className={cn(
+          "transition-[padding] duration-200 ease-in-out",
+          sidebarCollapsed ? "lg:pl-[4.5rem]" : "lg:pl-64"
+        )}
+      >
         <header className="sticky top-0 z-30 border-b bg-background/90 backdrop-blur-md">
-          <div className="flex items-center gap-3 px-4 py-3 lg:hidden">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Open navigation"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <MenuIcon />
-            </Button>
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <CompassIcon className="size-4 shrink-0" />
-              <span className="truncate text-sm font-semibold">Local Intel</span>
-            </div>
-            <Button size="sm" onClick={() => setReportOpen(true)}>
-              <PlusIcon data-icon="inline-start" />
-              Report
-            </Button>
-          </div>
-
-          <div className="flex flex-col gap-4 px-4 py-4 md:px-8">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight md:text-2xl">
+          <div className="flex flex-col gap-3 px-4 py-3 md:px-6 xl:px-10">
+            <div className="flex items-center gap-2 lg:gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="lg:hidden"
+                aria-label="Open navigation"
+                onClick={() => setMobileNavOpen(true)}
+              >
+                <MenuIcon />
+              </Button>
+              <div className="min-w-0 flex-1 lg:w-56 lg:flex-none xl:w-64">
+                <div className="flex items-center gap-2 lg:hidden">
+                  <CompassIcon className="size-4 shrink-0" />
+                  <span className="truncate text-sm font-semibold">Local Intel</span>
+                </div>
+                <h1 className="hidden text-lg font-semibold tracking-tight lg:block">
                   {headings[view].title}
                 </h1>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="hidden truncate text-sm text-muted-foreground lg:block">
                   {headings[view].subtitle}
                 </p>
               </div>
-              <Button
-                className="hidden lg:inline-flex"
-                size="lg"
-                onClick={() => setReportOpen(true)}
-              >
-                <PlusIcon data-icon="inline-start" />
-                Report an Issue
-              </Button>
-            </div>
 
-            {view !== "profile" && view !== "map" ? (
-              <div className="flex flex-col gap-3 lg:flex-row">
-                <div className="relative min-w-0 flex-1">
+              {showFilters ? (
+                <div className="relative hidden min-w-0 flex-1 lg:block">
                   <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search issues, streets, or landmarks"
-                    className="pl-8"
+                    className="h-9 pl-8"
                     aria-label="Search issues"
                   />
                 </div>
-                <LocationSelector
-                  value={location}
-                  onValueChange={setLocation}
-                  className="w-full lg:hidden"
+              ) : (
+                <div className="hidden flex-1 lg:block" />
+              )}
+
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <ThemeToggle />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="lg:h-8"
+                  onClick={() => setReportOpen(true)}
+                >
+                  <PlusIcon data-icon="inline-start" />
+                  <span className="lg:hidden">Report</span>
+                  <span className="hidden lg:inline">Report an Issue</span>
+                </Button>
+              </div>
+            </div>
+
+            <div className="lg:hidden">
+              <h1 className="text-base font-semibold tracking-tight">
+                {headings[view].title}
+              </h1>
+              <p className="text-sm text-muted-foreground">{headings[view].subtitle}</p>
+            </div>
+
+            {showFilters ? (
+              <div className="relative min-w-0 lg:hidden">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search issues, streets, or landmarks"
+                  className="h-9 pl-8"
+                  aria-label="Search issues"
                 />
               </div>
             ) : null}
 
-            {view !== "profile" && view !== "map" ? (
-              <CategoryFilters value={category} onValueChange={setCategory} />
+            {showFilters ? (
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <div className="min-w-0 flex-1">
+                  <CategoryFilters value={category} onValueChange={setCategory} />
+                </div>
+                <LocationSelector
+                  value={location}
+                  onValueChange={setLocation}
+                  className="w-full md:w-56 lg:hidden"
+                />
+              </div>
             ) : null}
           </div>
         </header>
 
-        <main className="px-4 py-6 pb-24 md:px-8 lg:pb-10">
+        <main className="px-3 py-4 pb-24 md:px-6 md:pb-10 xl:px-8">
           {view === "map" ? (
             <NeighborhoodBoard
               issues={issues}
@@ -260,6 +321,7 @@ export function CommunityFeed() {
               savedIds={savedIds}
               onToggleSave={toggleSave}
               onUpvote={upvote}
+              onAddComment={addComment}
               emptyLabel={
                 view === "saved"
                   ? "No saved issues match these filters."
@@ -290,17 +352,19 @@ function IssueList({
   savedIds,
   onToggleSave,
   onUpvote,
+  onAddComment,
   emptyLabel,
 }: {
   issues: Issue[];
   savedIds: string[];
   onToggleSave: (id: string) => void;
   onUpvote: (id: string) => void;
+  onAddComment: (postId: string, body: string, parentId: string | null) => void;
   emptyLabel: string;
 }) {
   if (issues.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed px-6 py-16 text-center">
+      <div className="mx-auto w-full max-w-[1100px] rounded-lg border border-dashed px-6 py-16 text-center">
         <p className="text-sm font-medium">{emptyLabel}</p>
         <p className="mt-1 text-sm text-muted-foreground">
           Try another neighborhood, category, or search term.
@@ -310,14 +374,15 @@ function IssueList({
   }
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-4">
+    <div className="mx-auto w-full max-w-[1100px]">
       {issues.map((issue) => (
-        <IssueCard
+        <PostItem
           key={issue.id}
-          issue={issue}
+          post={issue}
           saved={savedIds.includes(issue.id)}
           onToggleSave={onToggleSave}
           onUpvote={onUpvote}
+          onAddComment={onAddComment}
         />
       ))}
     </div>
@@ -334,11 +399,14 @@ function NeighborhoodBoard({
   onSelect: (value: Neighborhood | "all") => void;
 }) {
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="mx-auto grid w-full max-w-[1100px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
       <Card
         role="button"
         tabIndex={0}
-        className={`cursor-pointer ${selected === "all" ? "ring-2 ring-foreground" : ""}`}
+        className={cn(
+          "cursor-pointer shadow-none ring-border",
+          selected === "all" && "ring-2 ring-foreground"
+        )}
         onClick={() => onSelect("all")}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -362,9 +430,10 @@ function NeighborhoodBoard({
             key={neighborhood}
             role="button"
             tabIndex={0}
-            className={`cursor-pointer ${
-              selected === neighborhood ? "ring-2 ring-foreground" : ""
-            }`}
+            className={cn(
+              "cursor-pointer shadow-none ring-border",
+              selected === neighborhood && "ring-2 ring-foreground"
+            )}
             onClick={() => onSelect(neighborhood)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -396,8 +465,8 @@ function ProfilePanel({
   const reported = issues.filter((issue) => issue.reporter.name === "Alex Chen");
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-4">
-      <Card>
+    <div className="mx-auto grid w-full max-w-[1100px] gap-4">
+      <Card className="shadow-none ring-border">
         <CardHeader>
           <div className="flex items-center gap-4">
             <Avatar size="lg">
@@ -418,12 +487,12 @@ function ProfilePanel({
         </CardContent>
       </Card>
       {reported.length === 0 ? (
-        <div className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
           You have not reported an issue yet. Use Report an Issue to add one locally.
         </div>
       ) : (
         reported.map((issue) => (
-          <Card key={issue.id}>
+          <Card key={issue.id} className="shadow-none ring-border">
             <CardHeader>
               <CardTitle>{issue.title}</CardTitle>
               <CardDescription>
@@ -439,8 +508,8 @@ function ProfilePanel({
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg bg-secondary px-3 py-3">
-      <p className="text-lg font-semibold">{value}</p>
+    <div className="rounded-md border bg-muted/40 px-3 py-3">
+      <p className="text-lg font-semibold tracking-tight">{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );

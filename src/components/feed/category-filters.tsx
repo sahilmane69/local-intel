@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  BusIcon,
   DropletsIcon,
   LeafIcon,
+  RouteIcon,
   ShieldIcon,
   TreesIcon,
-  BusIcon,
-  RouteIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -33,8 +33,9 @@ type CategoryFiltersProps = {
 
 export function CategoryFilters({ value, onValueChange }: CategoryFiltersProps) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       <Button
+        type="button"
         size="sm"
         variant={value === "all" ? "default" : "outline"}
         onClick={() => onValueChange("all")}
@@ -48,6 +49,7 @@ export function CategoryFilters({ value, onValueChange }: CategoryFiltersProps) 
         return (
           <Button
             key={category}
+            type="button"
             size="sm"
             variant={selected ? "default" : "outline"}
             onClick={() => onValueChange(category)}

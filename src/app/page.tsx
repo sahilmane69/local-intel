@@ -3,9 +3,13 @@ import { Suspense } from "react";
 import { CommunityFeed } from "@/components/feed/community-feed";
 import { listPosts } from "@/repositories/server-posts";
 
-export default async function Home() {
+async function Feed() {
   const initialFeed = await listPosts();
 
+  return <CommunityFeed initialFeed={initialFeed} />;
+}
+
+export default function Home() {
   return (
     <Suspense
       fallback={
@@ -14,7 +18,7 @@ export default async function Home() {
         </div>
       }
     >
-      <CommunityFeed initialFeed={initialFeed} />
+      <Feed />
     </Suspense>
   );
 }

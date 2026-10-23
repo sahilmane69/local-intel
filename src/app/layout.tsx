@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 
@@ -29,7 +30,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${geistMono.variable} ${inter.className} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
-        <Providers>{children}</Providers>
+        <Suspense fallback={children}>
+          <Providers>{children}</Providers>
+        </Suspense>
       </body>
     </html>
   );

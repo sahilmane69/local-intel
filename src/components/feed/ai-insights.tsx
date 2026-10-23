@@ -2,6 +2,7 @@
 
 import type { AiInsight } from "@/data/issues";
 import { Button } from "@/components/ui/button";
+import { isSafeExternalUrl } from "@/lib/post-validation";
 
 type AiInsightsProps = {
   insight: AiInsight | null | undefined;
@@ -9,6 +10,13 @@ type AiInsightsProps = {
   analyzing?: boolean;
   onAnalyze?: () => void;
 };
+
+function formatCheckedAt(iso: string) {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? "an unknown time"
+    : date.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) + " UTC";
+}
 
 export function AiInsights({ insight, canAnalyze = false, analyzing = false, onAnalyze }: AiInsightsProps) {
   if (!insight) {
@@ -28,7 +36,7 @@ export function AiInsights({ insight, canAnalyze = false, analyzing = false, onA
           This section is produced by an AI model ({insight.model}). It is not an
           official confirmation and cannot mark a report verified.
         </p>
-        {insight.checkedAt ? <p className="text-xs text-muted-foreground">Public sources checked {new Date(insight.checkedAt).toLocaleString()}.</p> : null}
+        {insight.checkedAt ? <p className="text-xs text-muted-foreground">Public sources checked {formatCheckedAt(insight.checkedAt)}.</p> : null}
         {insight.suggestedCategory ? <p className="text-xs text-muted-foreground">Suggested category: {insight.suggestedCategory}. This does not change the report category.</p> : null}
         <div>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -55,7 +63,7 @@ export function AiInsights({ insight, canAnalyze = false, analyzing = false, onA
         {insight.sources?.length ? <div>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Related public sources</p>
           <ul className="mt-1 grid gap-1 leading-6">
-            {insight.sources.map((source) => <li key={source.url}><a className="underline underline-offset-4" href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{source.publishedAt ? ` · ${source.publishedAt}` : " · publication date unavailable"}</li>)}
+            {insight.sources.filter((source) => isSafeExternalUrl(source.url)).map((source) => <li key={source.url}><a className="underline underline-offset-4" href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{source.publishedAt ? ` · ${source.publishedAt}` : " · publication date unavailable"}</li>)}
           </ul>
         </div> : null}
         {canAnalyze ? <Button type="button" variant="outline" size="sm" onClick={onAnalyze} disabled={analyzing}>{analyzing ? "Analyzing…" : "Refresh AI analysis"}</Button> : null}

@@ -94,7 +94,11 @@ function mapFeedRow(row: FeedRow): Issue {
 }
 
 export async function listPostsWith(client: Client): Promise<FeedResult> {
-  const { data, error } = await client.from("posts").select(feedSelect).order("created_at", { ascending: false });
+  const { data, error } = await client
+    .from("posts")
+    .select(feedSelect)
+    .order("created_at", { ascending: false })
+    .limit(100);
   if (error) return { posts: [], source: "supabase", error: error.message };
   return { posts: (data as unknown as FeedRow[]).map(mapFeedRow), source: "supabase" };
 }
@@ -130,7 +134,7 @@ export async function createPost(input: CreatePostInput): Promise<Issue> {
   if (!client) throw new Error("Supabase is not configured.");
   const user = await requireUser(client);
   const { data: post, error: postError } = await client.from("posts").insert({
-    author_id: user.id, title: input.title.trim() || "Community report", body: input.description.trim(), category: input.category,
+    author_id: user.id, title: input.title.trim(), body: input.description.trim(), category: input.category,
     city: input.city?.trim() || null, neighborhood: input.neighborhood, address: input.address.trim() || null, latitude: input.coordinates?.lat ?? null,
     longitude: input.coordinates?.lng ?? null, location_source: input.coordinates ? input.locationSource ?? "manual" : null,
     tags: input.tags ?? [], intake_notes: input.evidence?.trim() || null,

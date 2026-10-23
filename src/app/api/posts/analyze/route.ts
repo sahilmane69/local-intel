@@ -2,9 +2,11 @@ import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { isSafeExternalUrl } from "@/lib/post-validation";
 
 const rateLimit = new Map<string, number>();
 const categories = ["roads", "utilities", "safety", "environment", "transit", "parks"] as const;
+const ANALYSIS_REUSE_WINDOW_MS = 24 * 60 * 60 * 1_000;
 
 function jsonResponse(error: string, status: number) {
   return NextResponse.json({ error }, { status });
@@ -47,6 +49,18 @@ export async function POST(request: Request) {
   if (postError) return jsonResponse(postError.message, 500);
   if (!post) return jsonResponse("Only the report author can request analysis.", 403);
 
+  const { data: recentAnalysis, error: recentAnalysisError } = await client
+    .from("ai_analyses")
+    .select("checked_at, sources")
+    .eq("post_id", post.id)
+    .order("checked_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (recentAnalysisError) return jsonResponse(recentAnalysisError.message, 500);
+  if (recentAnalysis && Date.now() - new Date(recentAnalysis.checked_at).getTime() < ANALYSIS_REUSE_WINDOW_MS) {
+    return NextResponse.json({ checkedAt: recentAnalysis.checked_at, sources: recentAnalysis.sources, cached: true });
+  }
+
   rateLimit.set(auth.user.id, Date.now());
   const { data: candidates } = await client
     .from("posts")
@@ -67,7 +81,7 @@ export async function POST(request: Request) {
     const grounded = response.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
     const sources = grounded.flatMap((chunk) => {
       const web = chunk.web as { uri?: unknown; title?: unknown; publicationDate?: unknown } | undefined;
-      if (typeof web?.uri !== "string") return [];
+      if (typeof web?.uri !== "string" || !isSafeExternalUrl(web.uri)) return [];
       return [{ title: typeof web.title === "string" ? web.title : web.uri, url: web.uri, publishedAt: typeof web.publicationDate === "string" ? web.publicationDate : null }];
     }).filter((source, index, all) => all.findIndex((candidate) => candidate.url === source.url) === index).slice(0, 8);
     const checkedAt = new Date().toISOString();

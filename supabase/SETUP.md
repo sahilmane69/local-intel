@@ -27,6 +27,7 @@ In the SQL editor, run in order:
 4. `supabase/migrations/20261023120003_feed_auth_profile_and_media.sql`
 5. `supabase/migrations/20261023120004_profile_account_and_location.sql`
 6. `supabase/migrations/20261023120005_location_and_ai_analysis.sql`
+7. `supabase/migrations/20261023120006_security_and_ai_schema_repair.sql`
 
 Or from a machine with the CLI logged in:
 

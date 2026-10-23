@@ -5,6 +5,7 @@ import { ExternalLinkIcon } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { isSafeExternalUrl } from "@/lib/post-validation";
 import type { EvidenceSource, IssueAttachment, Verification } from "@/data/issues";
 
 import { MediaPlayer } from "./media-gallery";
@@ -91,10 +92,10 @@ function EvidenceSourceRow({
             ) : null}
           </p>
         </div>
-        {source.href ? (
+        {source.href && isSafeExternalUrl(source.href) ? (
           <a
             href={source.href}
-            target={source.href.startsWith("#") ? undefined : "_blank"}
+            target="_blank"
             rel="noreferrer"
             className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
           >

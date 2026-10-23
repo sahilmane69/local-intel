@@ -9,7 +9,7 @@ const allowedMediaTypes = new Set([
 export function isSafeExternalUrl(value: string) {
   try {
     const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
+    return (url.protocol === "https:" || url.protocol === "http:") && Boolean(url.hostname) && !url.username && !url.password;
   } catch {
     return false;
   }
@@ -23,7 +23,9 @@ export function validateMediaFile(file: { name: string; type: string; size: numb
 }
 
 export function validateReportFields(input: { title: string; description: string; city?: string | null; neighborhood: string; address: string; tags: string[] }) {
+  if (!input.title.trim()) return "A title is required.";
   if (input.title.trim().length > 160) return "Titles must be 160 characters or fewer.";
+  if (!input.description.trim()) return "A description is required.";
   if (input.description.trim().length > 4_000) return "Descriptions must be 4,000 characters or fewer.";
   if (input.city && input.city.trim().length > 120) return "Cities must be 120 characters or fewer.";
   if (!input.neighborhood.trim() || input.neighborhood.trim().length > 120) return "A neighborhood of 1 to 120 characters is required.";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { CompassIcon, MenuIcon, PlusIcon, SearchIcon, UserRoundIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,9 +28,20 @@ import {
   type Issue,
   type Neighborhood,
 } from "@/data/issues";
-import { enrichNewPost, getMockPosts } from "@/repositories/posts";
+import {
+  addComment as createComment,
+  createPost,
+  enrichNewPost,
+  getMockPosts,
+  listSavedPostIds,
+  refreshPosts,
+  toggleSavedPost,
+  toggleVote,
+  type FeedResult,
+} from "@/repositories/posts";
 
 import { AppSidebar } from "./app-sidebar";
+import { AccountDialog, type AccountProfile } from "./account-dialog";
 import { CategoryFilters } from "./category-filters";
 import { LocationSelector } from "./location-selector";
 import { MobileNav } from "./mobile-nav";
@@ -39,9 +50,13 @@ import { ReportIssueDialog } from "./report-issue-dialog";
 import type { AppView } from "./types";
 import { useSidebarCollapsed } from "./use-sidebar-collapsed";
 
-export function CommunityFeed() {
-  const [issues, setIssues] = useState<Issue[]>(() => getMockPosts());
-  const [savedIds, setSavedIds] = useState<string[]>(["iss-102", "iss-104"]);
+export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
+  const [issues, setIssues] = useState<Issue[]>(() => initialFeed?.posts ?? getMockPosts());
+  const [source, setSource] = useState(initialFeed?.source ?? "mock");
+  const [feedError, setFeedError] = useState(initialFeed?.error ?? null);
+  const [loading, setLoading] = useState(false);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [viewerName, setViewerName] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | "all">("all");
   const [location, setLocation] = useState<Neighborhood | "all">("all");
@@ -49,6 +64,15 @@ export function CommunityFeed() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useSidebarCollapsed();
+
+  const loadFeed = useCallback(async () => {
+    setLoading(true);
+    const result = await refreshPosts();
+    setLoading(false);
+    setSource(result.source);
+    setFeedError(result.error ?? null);
+    if (!result.error) setIssues(result.posts);
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -90,49 +114,52 @@ export function CommunityFeed() {
     return inLocation && issue.status !== "resolved";
   }).length;
 
-  function toggleSave(id: string) {
-    setSavedIds((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id]
-    );
+  async function toggleSave(id: string) {
+    try {
+      await toggleSavedPost(id);
+      setSavedIds(await listSavedPostIds());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update saved issues.");
+    }
   }
 
-  function upvote(id: string) {
-    setIssues((current) =>
-      current.map((issue) =>
-        issue.id === id ? { ...issue, upvotes: issue.upvotes + 1 } : issue
-      )
-    );
+  async function upvote(id: string) {
+    try {
+      await toggleVote(id);
+      await loadFeed();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update your vote.");
+    }
   }
 
-  function addComment(postId: string, body: string, parentId: string | null) {
-    setIssues((current) =>
-      current.map((issue) => {
-        if (issue.id !== postId) return issue;
-        const comments = [
-          ...(issue.comments ?? []),
-          {
-            id: `c-${crypto.randomUUID()}`,
-            postId,
-            parentId,
-            body,
-            createdAt: new Date().toISOString(),
-            author: { name: "Alex Chen", initials: "AC" },
-          },
-        ];
-        return { ...issue, comments, commentCount: comments.length };
-      })
-    );
+  async function addComment(postId: string, body: string, parentId: string | null) {
+    try {
+      await createComment(postId, body, parentId);
+      await loadFeed();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not add your comment.");
+    }
   }
 
   async function addIssue(issue: Issue) {
-    const next = await enrichNewPost(issue);
-    setIssues((current) => [next, ...current]);
+    if (source === "mock") {
+      const next = await enrichNewPost(issue);
+      setIssues((current) => [next, ...current]);
+      toast.message("Saved only in this browser because Supabase credentials are missing.");
+    } else {
+      const created = await createPost(issue);
+      setIssues((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      toast.success("Report published as Unverified.");
+    }
     setView("feed");
     setCategory("all");
     setQuery("");
-    toast.message("Using local mock data. Supabase is not connected.");
+  }
+
+  async function handleSessionChange(user: { id: string } | null, profile: AccountProfile | null) {
+    setViewerName(profile?.display_name ?? null);
+    setSavedIds(user ? await listSavedPostIds() : []);
+    if (source === "supabase") await loadFeed();
   }
 
   const headings: Record<AppView, { title: string; subtitle: string }> = {
@@ -251,6 +278,7 @@ export function CommunityFeed() {
 
               <div className="ml-auto flex shrink-0 items-center gap-2">
                 <ThemeToggle />
+                <AccountDialog onSessionChange={handleSessionChange} />
                 <Button
                   type="button"
                   size="sm"
@@ -300,6 +328,17 @@ export function CommunityFeed() {
         </header>
 
         <main className="px-3 py-4 pb-24 md:px-6 md:pb-10 xl:px-8">
+          {source === "mock" ? (
+            <div className="mx-auto mb-4 flex w-full max-w-[1100px] items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+              <span>Using development mock data because Supabase credentials are missing.</span>
+            </div>
+          ) : null}
+          {feedError ? (
+            <div className="mx-auto mb-4 flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm" role="alert">
+              <span>Could not load community posts: {feedError}</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => void loadFeed()} disabled={loading}>Retry</Button>
+            </div>
+          ) : null}
           {view === "map" ? (
             <NeighborhoodBoard
               issues={issues}
@@ -312,7 +351,7 @@ export function CommunityFeed() {
           ) : null}
 
           {view === "profile" ? (
-            <ProfilePanel issues={issues} savedCount={savedIds.length} />
+            <ProfilePanel issues={issues} savedCount={savedIds.length} viewerName={viewerName} />
           ) : null}
 
           {view !== "map" && view !== "profile" ? (
@@ -322,6 +361,7 @@ export function CommunityFeed() {
               onToggleSave={toggleSave}
               onUpvote={upvote}
               onAddComment={addComment}
+              loading={loading}
               emptyLabel={
                 view === "saved"
                   ? "No saved issues match these filters."
@@ -353,6 +393,7 @@ function IssueList({
   onToggleSave,
   onUpvote,
   onAddComment,
+  loading,
   emptyLabel,
 }: {
   issues: Issue[];
@@ -360,8 +401,17 @@ function IssueList({
   onToggleSave: (id: string) => void;
   onUpvote: (id: string) => void;
   onAddComment: (postId: string, body: string, parentId: string | null) => void;
+  loading: boolean;
   emptyLabel: string;
 }) {
+  if (loading && issues.length === 0) {
+    return (
+      <div className="mx-auto w-full max-w-[1100px] rounded-lg border border-dashed px-6 py-16 text-center text-sm text-muted-foreground">
+        Loading community reports…
+      </div>
+    );
+  }
+
   if (issues.length === 0) {
     return (
       <div className="mx-auto w-full max-w-[1100px] rounded-lg border border-dashed px-6 py-16 text-center">
@@ -458,11 +508,13 @@ function NeighborhoodBoard({
 function ProfilePanel({
   issues,
   savedCount,
+  viewerName,
 }: {
   issues: Issue[];
   savedCount: number;
+  viewerName: string | null;
 }) {
-  const reported = issues.filter((issue) => issue.reporter.name === "Alex Chen");
+  const reported = viewerName ? issues.filter((issue) => issue.reporter.name === viewerName) : [];
 
   return (
     <div className="mx-auto grid w-full max-w-[1100px] gap-4">
@@ -475,8 +527,8 @@ function ProfilePanel({
               </AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle>Alex Chen</CardTitle>
-              <CardDescription>Midtown · reporting since 2024</CardDescription>
+              <CardTitle>{viewerName ?? "Sign in to view your profile"}</CardTitle>
+              <CardDescription>{viewerName ? "Your reporting activity" : "Use the account button to sign in or create an account."}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -488,7 +540,7 @@ function ProfilePanel({
       </Card>
       {reported.length === 0 ? (
         <div className="rounded-lg border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
-          You have not reported an issue yet. Use Report an Issue to add one locally.
+          {viewerName ? "You have not reported an issue yet." : "Sign in to create, save, vote on, and comment on reports."}
         </div>
       ) : (
         reported.map((issue) => (

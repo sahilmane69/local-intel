@@ -155,7 +155,7 @@ function MediaViewer({
         <DialogHeader>
           <DialogTitle>{active?.caption ?? active?.name ?? "Media"}</DialogTitle>
           <DialogDescription>
-            Playback stays in this browser. Files are not stored as a permanent upload.
+            Files are attached to the report when Supabase is configured.
           </DialogDescription>
         </DialogHeader>
         {active ? <MediaPlayer item={active} /> : null}

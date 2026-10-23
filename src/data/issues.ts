@@ -45,6 +45,8 @@ export type IssueAttachment = {
   url: string;
   caption?: string;
   poster?: string;
+  /** Present only while a report is being created in the browser. */
+  file?: File;
 };
 
 export type IssueCoordinates = {

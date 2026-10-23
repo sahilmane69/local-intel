@@ -52,7 +52,7 @@ type ReportIssueDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   defaultNeighborhood: Neighborhood | "all";
-  onSubmit: (issue: Issue) => void;
+  onSubmit: (issue: Issue) => Promise<void>;
 };
 
 const LIMITS: Record<MediaKind, number> = {
@@ -265,7 +265,7 @@ export function ReportIssueDialog({
             : `${next.lat.toFixed(5)}, ${next.lng.toFixed(5)}`
         );
         setLocating(false);
-        toast.success("Current location captured. It is stored only in this session.");
+        toast.success("Current location captured.");
       },
       (error) => {
         setLocating(false);
@@ -312,6 +312,7 @@ export function ReportIssueDialog({
           mimeType: blob.type,
           url: URL.createObjectURL(blob),
           caption: "Voice note recorded in this session",
+          file: new File([blob], `voice-note-${Date.now()}.webm`, { type: blob.type }),
         };
         updateMedia((current) => [...current, nextAudio]);
       };
@@ -360,6 +361,7 @@ export function ReportIssueDialog({
         mimeType: file.type,
         url: URL.createObjectURL(file),
         caption: file.name,
+        file,
       });
     }
 
@@ -402,8 +404,6 @@ export function ReportIssueDialog({
     setSubmitting(true);
 
     try {
-      await new Promise((resolve) => window.setTimeout(resolve, 650));
-
       const createdAt = new Date().toISOString();
       const resolvedTitle =
         trimmedTitle ||
@@ -421,7 +421,7 @@ export function ReportIssueDialog({
           label: item.caption ?? item.name,
           attachmentId: item.id,
           recordedAt: createdAt,
-          note: "Session preview only. Not independently confirmed.",
+          note: "Submitted by a neighbor and not independently confirmed.",
         })),
         ...links.map((href) => ({
           id: createLocalId(),
@@ -438,7 +438,7 @@ export function ReportIssueDialog({
         })),
       ];
 
-      onSubmit({
+      await onSubmit({
         id: `iss-${createLocalId()}`,
         title: resolvedTitle,
         description: trimmedDescription,
@@ -460,9 +460,7 @@ export function ReportIssueDialog({
         aiInsight: null,
       });
 
-      toast.success(
-        "Report added as Unverified. Media stays in this session and is not treated as confirmed evidence."
-      );
+      toast.success("Report submitted as Unverified.");
       skipRevokeOnCloseRef.current = true;
       mediaRef.current = [];
       resetFields();
@@ -688,7 +686,7 @@ export function ReportIssueDialog({
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Up to {LIMITS.image} images, {LIMITS.video} videos, and {LIMITS.audio} audio
-                  clips. Previews are not a permanent upload.
+                  clips. Files upload with the report when Supabase is configured.
                 </p>
               )}
               {media.length > 0 ? (

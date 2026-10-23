@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -46,24 +46,18 @@ export function ReportIssueDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<Category>("roads");
-  const [neighborhood, setNeighborhood] = useState<Neighborhood>(
-    defaultNeighborhood === "all" ? "Downtown" : defaultNeighborhood
-  );
+  const [neighborhoodOverride, setNeighborhoodOverride] =
+    useState<Neighborhood | null>(null);
   const [address, setAddress] = useState("");
-
-  useEffect(() => {
-    if (open) {
-      setNeighborhood(
-        defaultNeighborhood === "all" ? "Downtown" : defaultNeighborhood
-      );
-    }
-  }, [defaultNeighborhood, open]);
+  const neighborhood =
+    neighborhoodOverride ??
+    (defaultNeighborhood === "all" ? "Downtown" : defaultNeighborhood);
 
   function reset() {
     setTitle("");
     setDescription("");
     setCategory("roads");
-    setNeighborhood(defaultNeighborhood === "all" ? "Downtown" : defaultNeighborhood);
+    setNeighborhoodOverride(null);
     setAddress("");
   }
 
@@ -136,7 +130,7 @@ export function ReportIssueDialog({
                   }}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{categoryLabels[category]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
                     {categories.map((item) => (
@@ -153,11 +147,11 @@ export function ReportIssueDialog({
                 <Select
                   value={neighborhood}
                   onValueChange={(value) => {
-                    if (value) setNeighborhood(value as Neighborhood);
+                    if (value) setNeighborhoodOverride(value as Neighborhood);
                   }}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue />
+                    <SelectValue>{neighborhood}</SelectValue>
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
                     {neighborhoods.map((item) => (

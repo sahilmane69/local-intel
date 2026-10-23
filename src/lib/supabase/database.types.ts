@@ -45,6 +45,7 @@ export type Database = {
           body: string;
           category: "roads" | "utilities" | "safety" | "environment" | "transit" | "parks";
           status: "open" | "in-progress" | "resolved";
+          city: string | null;
           neighborhood: string;
           address: string | null;
           latitude: number | null;
@@ -63,6 +64,7 @@ export type Database = {
           title: string;
           body?: string;
           category: Database["public"]["Tables"]["posts"]["Row"]["category"];
+          city?: string | null;
           neighborhood: string;
           status?: Database["public"]["Tables"]["posts"]["Row"]["status"];
           address?: string | null;
@@ -106,7 +108,7 @@ export type Database = {
         Relationships: [];
       };
       verification_events: { Row: { id: string; post_id: string; actor_id: string; status: "unverified" | "community-corroborated" | "officially-confirmed"; notes: string; created_at: string }; Insert: never; Update: never; Relationships: [] };
-      ai_analyses: { Row: { id: string; post_id: string; summary: string; duplicate_hints: Json; evidence_notes: string; model: string; created_at: string }; Insert: never; Update: never; Relationships: [] };
+      ai_analyses: { Row: { id: string; post_id: string; summary: string; suggested_category: "roads" | "utilities" | "safety" | "environment" | "transit" | "parks" | null; duplicate_hints: Json; evidence_notes: string; sources: Json; checked_at: string; model: string; created_at: string }; Insert: { post_id: string; summary: string; suggested_category?: "roads" | "utilities" | "safety" | "environment" | "transit" | "parks" | null; duplicate_hints?: Json; evidence_notes: string; sources?: Json; checked_at?: string; model: string }; Update: never; Relationships: [] };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

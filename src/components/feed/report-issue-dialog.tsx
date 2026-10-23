@@ -35,7 +35,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   categories,
   categoryLabels,
-  neighborhoods,
   unverifiedIntake,
   type Category,
   type EvidenceSource,
@@ -43,15 +42,16 @@ import {
   type IssueAttachment,
   type IssueCoordinates,
   type MediaKind,
-  type Neighborhood,
 } from "@/data/issues";
+import { reverseGeocode } from "@/lib/location-client";
+import { validateMediaFile } from "@/lib/post-validation";
 
 import { MediaPlayer } from "./media-gallery";
 
 type ReportIssueDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  defaultNeighborhood: Neighborhood | "all";
+  defaultNeighborhood: string | "all";
   onSubmit: (issue: Issue) => Promise<void>;
 };
 
@@ -140,8 +140,8 @@ export function ReportIssueDialog({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<Category>("roads");
-  const [neighborhoodOverride, setNeighborhoodOverride] =
-    useState<Neighborhood | null>(null);
+  const [city, setCity] = useState("");
+  const [neighborhoodOverride, setNeighborhoodOverride] = useState("");
   const [address, setAddress] = useState("");
   const [tagsInput, setTagsInput] = useState("");
   const [evidence, setEvidence] = useState("");
@@ -176,9 +176,7 @@ export function ReportIssueDialog({
     });
   }
 
-  const neighborhood =
-    neighborhoodOverride ??
-    (defaultNeighborhood === "all" ? "Downtown" : defaultNeighborhood);
+  const neighborhood = neighborhoodOverride || (defaultNeighborhood === "all" ? "" : defaultNeighborhood);
 
   const imageCount = media.filter((item) => item.kind === "image").length;
   const videoCount = media.filter((item) => item.kind === "video").length;
@@ -223,7 +221,8 @@ export function ReportIssueDialog({
     setTitle("");
     setDescription("");
     setCategory("roads");
-    setNeighborhoodOverride(null);
+    setCity("");
+    setNeighborhoodOverride("");
     setAddress("");
     setTagsInput("");
     setEvidence("");
@@ -259,13 +258,15 @@ export function ReportIssueDialog({
         };
         setCoordinates(next);
         setLocationSource("gps");
-        setAddress((current) =>
-          current.trim()
-            ? current
-            : `${next.lat.toFixed(5)}, ${next.lng.toFixed(5)}`
-        );
         setLocating(false);
-        toast.success("Current location captured.");
+        void reverseGeocode(next.lat, next.lng).then((resolved) => {
+          if (resolved.address) setAddress(resolved.address);
+          if (resolved.city) setCity(resolved.city);
+          if (resolved.neighborhood) setNeighborhoodOverride(resolved.neighborhood);
+          toast.success(resolved.address || resolved.city || resolved.neighborhood ? "Current location identified." : "Current coordinates captured. Enter city and neighborhood manually.");
+        }).catch((geocodingError) => {
+          toast.error(geocodingError instanceof Error ? `${geocodingError.message} Enter location details manually.` : "Could not identify your location. Enter location details manually.");
+        });
       },
       (error) => {
         setLocating(false);
@@ -329,15 +330,16 @@ export function ReportIssueDialog({
   function addFiles(fileList: FileList | null, expected?: MediaKind) {
     if (!fileList) return;
     const incoming = Array.from(fileList)
-      .map((file) => ({ file, kind: kindFromFile(file) }))
-      .filter((entry): entry is { file: File; kind: MediaKind } => {
-        if (!entry.kind) return false;
+      .map((file) => ({ file, kind: kindFromFile(file), error: validateMediaFile(file) }))
+      .filter((entry): entry is { file: File; kind: MediaKind; error: null } => {
+        if (!entry.kind || entry.error) return false;
         if (expected && entry.kind !== expected) return false;
         return true;
       });
 
     if (incoming.length === 0) {
-      toast.error("Choose a supported image, video, or audio file.");
+      const firstError = Array.from(fileList).map(validateMediaFile).find(Boolean);
+      toast.error(firstError ?? "Choose a supported image, video, or audio file.");
       return;
     }
 
@@ -399,6 +401,10 @@ export function ReportIssueDialog({
       toast.error("The report needs at least one meaningful detail.");
       return;
     }
+    if (!city.trim() || !neighborhood.trim()) {
+      setFormError("Enter a city and neighborhood, or use GPS and confirm the returned details.");
+      return;
+    }
 
     setFormError(null);
     setSubmitting(true);
@@ -439,16 +445,16 @@ export function ReportIssueDialog({
       ];
 
       await onSubmit({
-        id: `iss-${createLocalId()}`,
+        id: `iss-${createLocalId()}`, authorId: "",
         title: resolvedTitle,
         description: trimmedDescription,
         category,
         status: "open",
-        neighborhood,
+        city: city.trim(), neighborhood,
         address: trimmedAddress || (coordinates ? "GPS coordinates" : "Location not specified"),
         upvotes: 1,
         commentCount: 0,
-        reporter: { name: "Alex Chen", initials: "AC" },
+        reporter: { name: "", initials: "" },
         createdAt,
         tags,
         evidence: trimmedEvidence || undefined,
@@ -490,8 +496,8 @@ export function ReportIssueDialog({
           <DialogHeader className="border-b p-4 pr-12">
             <DialogTitle>Report an Issue</DialogTitle>
             <DialogDescription>
-              New reports start as Unverified. Photos, video, and audio stay in this
-              browser session only.
+              New reports start as Unverified. Location details can be entered manually
+              or identified after you explicitly grant GPS permission.
             </DialogDescription>
           </DialogHeader>
 
@@ -503,6 +509,7 @@ export function ReportIssueDialog({
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 placeholder="Optional if you attach media"
+                maxLength={160}
                 disabled={submitting}
               />
             </label>
@@ -515,6 +522,7 @@ export function ReportIssueDialog({
                 onChange={(event) => setDescription(event.target.value)}
                 placeholder="What did you see, when, and why does it matter?"
                 className="min-h-24"
+                maxLength={4000}
                 disabled={submitting}
               />
             </label>
@@ -543,25 +551,12 @@ export function ReportIssueDialog({
               </label>
 
               <label className="grid gap-1.5 text-sm font-medium">
+                City
+                <Input value={city} onChange={(event) => setCity(event.target.value)} maxLength={120} disabled={submitting} required />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
                 Neighborhood
-                <Select
-                  value={neighborhood}
-                  onValueChange={(value) => {
-                    if (value) setNeighborhoodOverride(value as Neighborhood);
-                  }}
-                  disabled={submitting}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>{neighborhood}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent alignItemWithTrigger={false}>
-                    {neighborhoods.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input value={neighborhood} onChange={(event) => setNeighborhoodOverride(event.target.value)} maxLength={120} disabled={submitting} required />
               </label>
             </div>
 
@@ -591,6 +586,7 @@ export function ReportIssueDialog({
                   setLocationSource("manual");
                 }}
                 placeholder="Street, park, intersection, or pasted coordinates"
+                maxLength={500}
                 disabled={submitting}
               />
             </div>

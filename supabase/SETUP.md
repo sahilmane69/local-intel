@@ -12,6 +12,8 @@ Copy `.env.example` to `.env.local` (or `.env`) and fill in values from Project 
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (publishable / legacy anon key)
+- `GEMINI_API_KEY` (server-only; required only for on-demand AI analysis)
+- `NOMINATIM_USER_AGENT` (server-only; an identifying User-Agent with a contact address for reverse geocoding)
 
 Restart `npm run dev` after changing env vars.
 
@@ -24,6 +26,7 @@ In the SQL editor, run in order:
 3. `supabase/migrations/20261023120002_storage_post_media.sql`
 4. `supabase/migrations/20261023120003_feed_auth_profile_and_media.sql`
 5. `supabase/migrations/20261023120004_profile_account_and_location.sql`
+6. `supabase/migrations/20261023120005_location_and_ai_analysis.sql`
 
 Or from a machine with the CLI logged in:
 

@@ -19,8 +19,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Neighborhood } from "@/data/issues";
-
 import { LocationSelector } from "./location-selector";
 import type { AppView } from "./types";
 
@@ -35,8 +33,9 @@ const navItems: { id: AppView; label: string; icon: typeof LayoutGridIcon }[] = 
 type AppSidebarProps = {
   view: AppView;
   onViewChange: (view: AppView) => void;
-  location: Neighborhood | "all";
-  onLocationChange: (value: Neighborhood | "all") => void;
+  location: string | "all";
+  locationOptions: string[];
+  onLocationChange: (value: string | "all") => void;
   openCount: number;
   savedCount: number;
   collapsed?: boolean;
@@ -47,6 +46,7 @@ export function AppSidebar({
   view,
   onViewChange,
   location,
+  locationOptions,
   onLocationChange,
   openCount,
   savedCount,
@@ -70,7 +70,7 @@ export function AppSidebar({
               <p className="truncate text-sm font-semibold tracking-tight">
                 Local Intel
               </p>
-              <p className="truncate text-xs text-muted-foreground">Fairview</p>
+              <p className="truncate text-xs text-muted-foreground">Community reports</p>
             </div>
           )}
         </div>
@@ -91,6 +91,7 @@ export function AppSidebar({
       <div className={cn("px-2", collapsed && "flex justify-center")}>
         <LocationSelector
           value={location}
+          options={locationOptions}
           onValueChange={onLocationChange}
           className={collapsed ? "w-8 justify-center px-0" : "w-full"}
           iconOnly={collapsed}

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Local Intel",
-  description: "A community feed for neighborhood issues in Fairview.",
+  description: "A community feed for neighborhood issues.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

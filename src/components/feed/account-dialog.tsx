@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { reverseGeocode } from "@/lib/location-client";
 
 export type AccountProfile = {
   display_name: string;
@@ -206,7 +207,12 @@ export function AccountDialog({ onSessionChange }: { onSessionChange: (user: Use
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoordinates({ lat: position.coords.latitude, lng: position.coords.longitude });
+        const next = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setCoordinates(next);
+        void reverseGeocode(next.lat, next.lng).then((resolved) => {
+          if (resolved.city) setCity(resolved.city);
+          if (resolved.neighborhood) setNeighborhood(resolved.neighborhood);
+        }).catch((geocodingError) => setError(geocodingError instanceof Error ? `${geocodingError.message} Enter city and neighborhood manually.` : "Could not identify your location. Enter city and neighborhood manually."));
         toast.success("Location captured. Save your profile to store it.");
       },
       () => setError("Location permission was denied. Your manual city and neighborhood remain unchanged."),

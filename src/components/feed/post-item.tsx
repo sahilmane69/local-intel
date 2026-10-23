@@ -27,6 +27,9 @@ type PostItemProps = {
   onToggleSave: (id: string) => void;
   onUpvote: (id: string) => void;
   onAddComment: (postId: string, body: string, parentId: string | null) => void;
+  canAnalyze?: boolean;
+  analyzing?: boolean;
+  onAnalyze?: (postId: string) => void;
 };
 
 export function PostItem({
@@ -35,6 +38,9 @@ export function PostItem({
   onToggleSave,
   onUpvote,
   onAddComment,
+  canAnalyze,
+  analyzing,
+  onAnalyze,
 }: PostItemProps) {
   const attachments = post.attachments ?? [];
   const comments = post.comments ?? [];
@@ -65,7 +71,7 @@ export function PostItem({
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <MapPinIcon className="size-3.5" />
-              {post.address} · {post.neighborhood}
+              {post.address} · {post.neighborhood}{post.city ? `, ${post.city}` : ""}
             </span>
             <Badge variant="outline">{categoryLabels[post.category]}</Badge>
             <VerificationBadge status={post.verification.status} />
@@ -139,7 +145,7 @@ export function PostItem({
           verification={post.verification}
           attachments={attachments}
         />
-        <AiInsights insight={post.aiInsight} />
+        <AiInsights insight={post.aiInsight} canAnalyze={canAnalyze} analyzing={analyzing} onAnalyze={() => onAnalyze?.(post.id)} />
       </div>
     </article>
   );

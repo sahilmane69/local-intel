@@ -14,13 +14,14 @@ import {
   type VerificationStatus,
 } from "@/data/issues";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { isSafeExternalUrl, validateMediaFile, validateReportFields } from "@/lib/post-validation";
 import type { Database, Json } from "@/lib/supabase/database.types";
 
 type Client = SupabaseClient<Database>;
 
 export type FeedSource = "supabase";
 export type FeedResult = { posts: Issue[]; source: FeedSource; error?: string };
-export type CreatePostInput = Pick<Issue, "title" | "description" | "category" | "neighborhood" | "address" | "tags" | "evidence" | "coordinates" | "locationSource" | "attachments" | "verification">;
+export type CreatePostInput = Pick<Issue, "title" | "description" | "category" | "city" | "neighborhood" | "address" | "tags" | "evidence" | "coordinates" | "locationSource" | "attachments" | "verification">;
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "LI";
@@ -35,7 +36,7 @@ function asVerificationStatus(value: string): VerificationStatus {
 }
 
 type FeedRow = {
-  id: string; title: string; body: string; category: string; status: Issue["status"]; neighborhood: string; address: string | null;
+  id: string; author_id: string; title: string; body: string; category: string; status: Issue["status"]; city: string | null; neighborhood: string; address: string | null;
   latitude: number | null; longitude: number | null; location_source: "gps" | "manual" | null; verification_status: string;
   upvote_count: number; comment_count: number; tags: string[] | null; intake_notes: string | null; created_at: string;
   author: { display_name: string; avatar_url: string | null } | null;
@@ -43,18 +44,18 @@ type FeedRow = {
   comments: Array<{ id: string; post_id: string; parent_id: string | null; body: string; created_at: string; author: { display_name: string } | null }> | null;
   evidence_sources: Array<{ id: string; kind: EvidenceSource["kind"]; label: string; href: string | null; note: string | null; recorded_at: string | null; media_id: string | null }> | null;
   verification_events: Array<{ status: string; notes: string; created_at: string; actor: { display_name: string } | null }> | null;
-  ai_analyses: Array<{ summary: string; duplicate_hints: Json; evidence_notes: string; model: string; created_at: string }> | null;
+  ai_analyses: Array<{ summary: string; suggested_category: string | null; duplicate_hints: Json; evidence_notes: string; sources: Json; checked_at: string; model: string; created_at: string }> | null;
 };
 
 const feedSelect = `
-  id, title, body, category, status, neighborhood, address, latitude, longitude,
+  id, author_id, title, body, category, status, city, neighborhood, address, latitude, longitude,
   location_source, verification_status, upvote_count, comment_count, tags, intake_notes, created_at,
   author:profiles!posts_author_id_fkey(display_name, avatar_url),
   post_media(id, kind, public_url, mime_type, file_name, caption, poster_url, sort_order),
   comments(id, post_id, parent_id, body, created_at, author:profiles!comments_author_id_fkey(display_name)),
   evidence_sources(id, kind, label, href, note, recorded_at, media_id),
   verification_events(status, notes, created_at, actor:profiles!verification_events_actor_id_fkey(display_name)),
-  ai_analyses(summary, duplicate_hints, evidence_notes, model, created_at)
+  ai_analyses(summary, suggested_category, duplicate_hints, evidence_notes, sources, checked_at, model, created_at)
 `;
 
 function mapFeedRow(row: FeedRow): Issue {
@@ -78,7 +79,7 @@ function mapFeedRow(row: FeedRow): Issue {
   const duplicateHints = Array.isArray(latestAnalysis?.duplicate_hints) ? latestAnalysis.duplicate_hints.filter((item): item is string => typeof item === "string") : [];
 
   return {
-    id: row.id, title: row.title, description: row.body, category: asCategory(row.category), status: row.status,
+    id: row.id, authorId: row.author_id, title: row.title, description: row.body, category: asCategory(row.category), status: row.status, city: row.city,
     neighborhood: row.neighborhood as Issue["neighborhood"], address: row.address ?? "Location not specified", upvotes: row.upvote_count,
     commentCount: row.comment_count, reporter: { name: row.author?.display_name ?? "Local neighbor", initials: initials(row.author?.display_name ?? "Local neighbor") },
     createdAt: row.created_at, tags: row.tags ?? [], evidence: row.intake_notes ?? undefined,
@@ -88,7 +89,7 @@ function mapFeedRow(row: FeedRow): Issue {
       id: comment.id, postId: comment.post_id, parentId: comment.parent_id, body: comment.body, createdAt: comment.created_at,
       author: { name: comment.author?.display_name ?? "Local neighbor", initials: initials(comment.author?.display_name ?? "Local neighbor") },
     })),
-    aiInsight: latestAnalysis ? { summary: latestAnalysis.summary, duplicateHints, evidenceNotes: latestAnalysis.evidence_notes, generatedAt: latestAnalysis.created_at, model: latestAnalysis.model } : null,
+    aiInsight: latestAnalysis ? { summary: latestAnalysis.summary, suggestedCategory: latestAnalysis.suggested_category ? asCategory(latestAnalysis.suggested_category) : null, duplicateHints, evidenceNotes: latestAnalysis.evidence_notes, generatedAt: latestAnalysis.created_at, checkedAt: latestAnalysis.checked_at, model: latestAnalysis.model, sources: Array.isArray(latestAnalysis.sources) ? latestAnalysis.sources.filter((source): source is { title: string; url: string; publishedAt?: string | null } => typeof source === "object" && source !== null && typeof (source as { title?: unknown }).title === "string" && typeof (source as { url?: unknown }).url === "string") : [] } : null,
   };
 }
 
@@ -115,12 +116,22 @@ function safeFileName(name: string) {
 }
 
 export async function createPost(input: CreatePostInput): Promise<Issue> {
+  const validationError = validateReportFields({ ...input, tags: input.tags ?? [] });
+  if (validationError) throw new Error(validationError);
+  for (const attachment of input.attachments ?? []) {
+    if (!attachment.file) throw new Error(`The file for ${attachment.name} is no longer available. Choose it again.`);
+    const mediaError = validateMediaFile(attachment.file);
+    if (mediaError) throw new Error(mediaError);
+  }
+  for (const source of input.verification.sources) {
+    if (source.href && !isSafeExternalUrl(source.href)) throw new Error("Evidence links must use http or https.");
+  }
   const client = createBrowserSupabaseClient();
   if (!client) throw new Error("Supabase is not configured.");
   const user = await requireUser(client);
   const { data: post, error: postError } = await client.from("posts").insert({
     author_id: user.id, title: input.title.trim() || "Community report", body: input.description.trim(), category: input.category,
-    neighborhood: input.neighborhood, address: input.address.trim() || null, latitude: input.coordinates?.lat ?? null,
+    city: input.city?.trim() || null, neighborhood: input.neighborhood, address: input.address.trim() || null, latitude: input.coordinates?.lat ?? null,
     longitude: input.coordinates?.lng ?? null, location_source: input.coordinates ? input.locationSource ?? "manual" : null,
     tags: input.tags ?? [], intake_notes: input.evidence?.trim() || null,
   }).select("id").single();
@@ -131,9 +142,10 @@ export async function createPost(input: CreatePostInput): Promise<Issue> {
     const mediaRows: Database["public"]["Tables"]["post_media"]["Insert"][] = [];
     const mediaIdByDraftId = new Map<string, string>();
     for (const [index, attachment] of (input.attachments ?? []).entries()) {
-      if (!attachment.file) throw new Error(`The file for ${attachment.name} is no longer available. Choose it again.`);
+      const file = attachment.file;
+      if (!file) throw new Error(`The file for ${attachment.name} is no longer available. Choose it again.`);
       const path = `${user.id}/${post.id}/${crypto.randomUUID()}-${safeFileName(attachment.name)}`;
-      const { error: uploadError } = await client.storage.from("post-media").upload(path, attachment.file, { contentType: attachment.mimeType, upsert: false });
+      const { error: uploadError } = await client.storage.from("post-media").upload(path, file, { contentType: attachment.mimeType, upsert: false });
       if (uploadError) throw new Error(uploadError.message);
       uploadedPaths.push(path);
       const { data: publicUrl } = client.storage.from("post-media").getPublicUrl(path);

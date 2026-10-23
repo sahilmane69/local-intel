@@ -10,17 +10,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { neighborhoods, type Neighborhood } from "@/data/issues";
-
 type LocationSelectorProps = {
-  value: Neighborhood | "all";
-  onValueChange: (value: Neighborhood | "all") => void;
+  value: string | "all";
+  options: string[];
+  onValueChange: (value: string | "all") => void;
   className?: string;
   iconOnly?: boolean;
 };
 
 export function LocationSelector({
   value,
+  options,
   onValueChange,
   className,
   iconOnly = false,
@@ -29,7 +29,7 @@ export function LocationSelector({
     <Select
       value={value}
       onValueChange={(next) => {
-        if (next) onValueChange(next as Neighborhood | "all");
+        if (next) onValueChange(next);
       }}
     >
       <SelectTrigger
@@ -49,7 +49,7 @@ export function LocationSelector({
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false} align="start">
         <SelectItem value="all">All neighborhoods</SelectItem>
-        {neighborhoods.map((neighborhood) => (
+        {options.map((neighborhood) => (
           <SelectItem key={neighborhood} value={neighborhood}>
             {neighborhood}
           </SelectItem>

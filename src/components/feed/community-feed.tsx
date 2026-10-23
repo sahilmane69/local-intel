@@ -22,12 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import {
-  neighborhoods,
-  type Category,
-  type Issue,
-  type Neighborhood,
-} from "@/data/issues";
+import { type Category, type Issue } from "@/data/issues";
 import {
   addComment as createComment,
   createPost,
@@ -58,9 +53,11 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
   const [loading, setLoading] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [viewerProfile, setViewerProfile] = useState<AccountProfile | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
+  const [analyzingPostId, setAnalyzingPostId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | "all">("all");
-  const [location, setLocation] = useState<Neighborhood | "all">("all");
+  const [location, setLocation] = useState<string | "all">("all");
   const [view, setView] = useState<AppView>("feed");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
@@ -74,6 +71,11 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
     setFeedError(result.error ?? null);
     if (!result.error) setIssues(result.posts);
   }, []);
+
+  const locationOptions = useMemo(
+    () => [...new Set(issues.map((issue) => issue.neighborhood).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [issues]
+  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -153,7 +155,23 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
     setQuery("");
   }
 
+  async function analyzePost(postId: string) {
+    setAnalyzingPostId(postId);
+    try {
+      const response = await fetch("/api/posts/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId }) });
+      const result = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(result?.error ?? "Could not analyze this report.");
+      await loadFeed();
+      toast.success("AI analysis added as related public context, not verification.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not analyze this report.");
+    } finally {
+      setAnalyzingPostId(null);
+    }
+  }
+
   async function handleSessionChange(user: { id: string } | null, profile: AccountProfile | null) {
+    setViewerId(user?.id ?? null);
     setViewerProfile(profile);
     setSavedIds(user ? await listSavedPostIds() : []);
     if (source === "supabase") await loadFeed();
@@ -162,7 +180,7 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
   const headings: Record<AppView, { title: string; subtitle: string }> = {
     feed: {
       title: "Community feed",
-      subtitle: "Neighborhood reports in Fairview",
+      subtitle: "Neighborhood reports from the community",
     },
     nearby: {
       title: "Nearby",
@@ -195,10 +213,11 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
           sidebarCollapsed ? "w-[4.5rem]" : "w-64"
         )}
       >
-        <AppSidebar
+            <AppSidebar
           view={view}
           onViewChange={setView}
-          location={location}
+              location={location}
+              locationOptions={locationOptions}
           onLocationChange={setLocation}
           openCount={openCount}
           savedCount={savedIds.length}
@@ -219,6 +238,7 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
               setMobileNavOpen(false);
             }}
             location={location}
+            locationOptions={locationOptions}
             onLocationChange={setLocation}
             openCount={openCount}
             savedCount={savedIds.length}
@@ -316,6 +336,7 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
                 </div>
                 <LocationSelector
                   value={location}
+                  options={locationOptions}
                   onValueChange={setLocation}
                   className="w-full md:w-56 lg:hidden"
                 />
@@ -353,6 +374,9 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
               onToggleSave={toggleSave}
               onUpvote={upvote}
               onAddComment={addComment}
+              viewerId={viewerId}
+              analyzingPostId={analyzingPostId}
+              onAnalyze={analyzePost}
               loading={loading}
               emptyLabel={
                 view === "saved"
@@ -385,6 +409,9 @@ function IssueList({
   onToggleSave,
   onUpvote,
   onAddComment,
+  viewerId,
+  analyzingPostId,
+  onAnalyze,
   loading,
   emptyLabel,
 }: {
@@ -393,6 +420,9 @@ function IssueList({
   onToggleSave: (id: string) => void;
   onUpvote: (id: string) => void;
   onAddComment: (postId: string, body: string, parentId: string | null) => void;
+  viewerId: string | null;
+  analyzingPostId: string | null;
+  onAnalyze: (postId: string) => void;
   loading: boolean;
   emptyLabel: string;
 }) {
@@ -425,6 +455,9 @@ function IssueList({
           onToggleSave={onToggleSave}
           onUpvote={onUpvote}
           onAddComment={onAddComment}
+          canAnalyze={viewerId === issue.authorId}
+          analyzing={analyzingPostId === issue.id}
+          onAnalyze={onAnalyze}
         />
       ))}
     </div>
@@ -437,8 +470,8 @@ function NeighborhoodBoard({
   onSelect,
 }: {
   issues: Issue[];
-  selected: Neighborhood | "all";
-  onSelect: (value: Neighborhood | "all") => void;
+  selected: string | "all";
+  onSelect: (value: string | "all") => void;
 }) {
   return (
     <div className="mx-auto grid w-full max-w-[1100px] gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -458,11 +491,11 @@ function NeighborhoodBoard({
         }}
       >
         <CardHeader>
-          <CardTitle>All Fairview</CardTitle>
-          <CardDescription>{issues.length} reports citywide</CardDescription>
+          <CardTitle>All neighborhoods</CardTitle>
+          <CardDescription>{issues.length} reports</CardDescription>
         </CardHeader>
       </Card>
-      {neighborhoods.map((neighborhood) => {
+      {[...new Set(issues.map((issue) => issue.neighborhood).filter(Boolean))].sort((a, b) => a.localeCompare(b)).map((neighborhood) => {
         const count = issues.filter(
           (issue) => issue.neighborhood === neighborhood
         ).length;

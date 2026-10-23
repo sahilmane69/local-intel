@@ -1,14 +1,18 @@
 "use client";
 
 import type { AiInsight } from "@/data/issues";
+import { Button } from "@/components/ui/button";
 
 type AiInsightsProps = {
   insight: AiInsight | null | undefined;
+  canAnalyze?: boolean;
+  analyzing?: boolean;
+  onAnalyze?: () => void;
 };
 
-export function AiInsights({ insight }: AiInsightsProps) {
+export function AiInsights({ insight, canAnalyze = false, analyzing = false, onAnalyze }: AiInsightsProps) {
   if (!insight) {
-    return null;
+    return canAnalyze ? <Button type="button" variant="outline" size="sm" onClick={onAnalyze} disabled={analyzing}>{analyzing ? "Analyzing…" : "Analyze with AI"}</Button> : null;
   }
 
   return (
@@ -24,6 +28,8 @@ export function AiInsights({ insight }: AiInsightsProps) {
           This section is produced by an AI model ({insight.model}). It is not an
           official confirmation and cannot mark a report verified.
         </p>
+        {insight.checkedAt ? <p className="text-xs text-muted-foreground">Public sources checked {new Date(insight.checkedAt).toLocaleString()}.</p> : null}
+        {insight.suggestedCategory ? <p className="text-xs text-muted-foreground">Suggested category: {insight.suggestedCategory}. This does not change the report category.</p> : null}
         <div>
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Summary
@@ -46,6 +52,13 @@ export function AiInsights({ insight }: AiInsightsProps) {
           </p>
           <p className="mt-1 leading-6">{insight.evidenceNotes}</p>
         </div>
+        {insight.sources?.length ? <div>
+          <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Related public sources</p>
+          <ul className="mt-1 grid gap-1 leading-6">
+            {insight.sources.map((source) => <li key={source.url}><a className="underline underline-offset-4" href={source.url} target="_blank" rel="noreferrer">{source.title}</a>{source.publishedAt ? ` · ${source.publishedAt}` : " · publication date unavailable"}</li>)}
+          </ul>
+        </div> : null}
+        {canAnalyze ? <Button type="button" variant="outline" size="sm" onClick={onAnalyze} disabled={analyzing}>{analyzing ? "Analyzing…" : "Refresh AI analysis"}</Button> : null}
       </div>
     </details>
   );

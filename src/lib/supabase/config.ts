@@ -1,9 +1,17 @@
+function normalizePublicEnvironmentValue(value: string | undefined) {
+  // Accept values copied as `NAME==value` once, without broadening which
+  // variables can reach the browser client.
+  return (value?.trim() || "").replace(/^=/, "");
+}
+
 export function getPublicSupabaseUrl() {
-  return process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
+  return normalizePublicEnvironmentValue(process.env.NEXT_PUBLIC_SUPABASE_URL);
 }
 
 export function getPublicSupabaseKey() {
-  return process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() || "";
+  return normalizePublicEnvironmentValue(
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  );
 }
 
 export function hasSupabaseCredentials() {

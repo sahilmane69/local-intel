@@ -1,12 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { mockAiInsights, mockComments } from "@/data/engagement";
 import {
   categories,
-  mockIssues,
   unverifiedIntake,
   verificationStatuses,
-  type AiInsight,
   type Category,
   type EvidenceSource,
   type Issue,
@@ -17,26 +14,13 @@ import {
   type VerificationStatus,
 } from "@/data/issues";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { hasSupabaseCredentials } from "@/lib/supabase/config";
 import type { Database, Json } from "@/lib/supabase/database.types";
-import { createGeminiAnalyzer } from "@/services/gemini";
 
 type Client = SupabaseClient<Database>;
 
-export type FeedSource = "mock" | "supabase";
+export type FeedSource = "supabase";
 export type FeedResult = { posts: Issue[]; source: FeedSource; error?: string };
 export type CreatePostInput = Pick<Issue, "title" | "description" | "category" | "neighborhood" | "address" | "tags" | "evidence" | "coordinates" | "locationSource" | "attachments" | "verification">;
-
-function withEngagement(posts: Issue[]): Issue[] {
-  return posts.map((post) => {
-    const comments = post.comments ?? mockComments[post.id] ?? [];
-    return { ...post, comments, commentCount: comments.length, aiInsight: post.aiInsight ?? mockAiInsights[post.id] ?? null };
-  });
-}
-
-export function getMockPosts(): Issue[] {
-  return withEngagement(mockIssues);
-}
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "LI";
@@ -115,7 +99,6 @@ export async function listPostsWith(client: Client): Promise<FeedResult> {
 }
 
 export async function refreshPosts(): Promise<FeedResult> {
-  if (!hasSupabaseCredentials()) return { posts: getMockPosts(), source: "mock" };
   const client = createBrowserSupabaseClient();
   if (!client) return { posts: [], source: "supabase", error: "Supabase environment variables are invalid." };
   return listPostsWith(client);
@@ -218,14 +201,4 @@ export async function toggleSavedPost(postId: string) {
   if (lookupError) throw new Error(lookupError.message);
   const { error } = existing ? await client.from("saved_posts").delete().eq("id", existing.id) : await client.from("saved_posts").insert({ post_id: postId, user_id: user.id });
   if (error) throw new Error(error.message);
-}
-
-export async function enrichNewPost(post: Issue): Promise<Issue> {
-  const analyzer = createGeminiAnalyzer();
-  const comments: PostComment[] = post.comments ?? [];
-  let aiInsight: AiInsight | null = post.aiInsight ?? null;
-  try { aiInsight = await analyzer.analyzePost(post); } catch {
-    aiInsight = { summary: "AI analysis was skipped.", duplicateHints: [], evidenceNotes: "No model output is available for this session.", generatedAt: new Date().toISOString(), model: "unavailable" };
-  }
-  return { ...post, comments, commentCount: comments.length, aiInsight };
 }

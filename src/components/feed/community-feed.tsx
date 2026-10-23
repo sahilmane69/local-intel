@@ -5,7 +5,7 @@ import { CompassIcon, MenuIcon, PlusIcon, SearchIcon, UserRoundIcon } from "luci
 import { toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -31,8 +31,6 @@ import {
 import {
   addComment as createComment,
   createPost,
-  enrichNewPost,
-  getMockPosts,
   listSavedPostIds,
   refreshPosts,
   toggleSavedPost,
@@ -50,13 +48,16 @@ import { ReportIssueDialog } from "./report-issue-dialog";
 import type { AppView } from "./types";
 import { useSidebarCollapsed } from "./use-sidebar-collapsed";
 
+// Change this product setting to adjust the Nearby feed radius.
+const NEARBY_RADIUS_KM = 10;
+
 export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
-  const [issues, setIssues] = useState<Issue[]>(() => initialFeed?.posts ?? getMockPosts());
-  const [source, setSource] = useState(initialFeed?.source ?? "mock");
+  const [issues, setIssues] = useState<Issue[]>(() => initialFeed?.posts ?? []);
+  const [source, setSource] = useState<FeedResult["source"]>(initialFeed?.source ?? "supabase");
   const [feedError, setFeedError] = useState(initialFeed?.error ?? null);
   const [loading, setLoading] = useState(false);
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [viewerName, setViewerName] = useState<string | null>(null);
+  const [viewerProfile, setViewerProfile] = useState<AccountProfile | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<Category | "all">("all");
   const [location, setLocation] = useState<Neighborhood | "all">("all");
@@ -89,11 +90,13 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
           issue.address.toLowerCase().includes(needle) ||
           (issue.tags ?? []).some((tag) => tag.toLowerCase().includes(needle));
         const matchesSaved = view !== "saved" || savedIds.includes(issue.id);
-        const matchesNearby =
-          view !== "nearby" ||
-          (location === "all"
-            ? ["Downtown", "Midtown", "Harbor East"].includes(issue.neighborhood)
-            : issue.neighborhood === location);
+        const matchesNearby = view !== "nearby" || isWithinRadius(
+          viewerProfile?.latitude,
+          viewerProfile?.longitude,
+          issue.coordinates?.lat,
+          issue.coordinates?.lng,
+          NEARBY_RADIUS_KM
+        );
 
         return (
           matchesCategory &&
@@ -107,7 +110,7 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-  }, [category, issues, location, query, savedIds, view]);
+  }, [category, issues, location, query, savedIds, view, viewerProfile]);
 
   const openCount = issues.filter((issue) => {
     const inLocation = location === "all" || issue.neighborhood === location;
@@ -142,22 +145,16 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
   }
 
   async function addIssue(issue: Issue) {
-    if (source === "mock") {
-      const next = await enrichNewPost(issue);
-      setIssues((current) => [next, ...current]);
-      toast.message("Saved only in this browser because Supabase credentials are missing.");
-    } else {
-      const created = await createPost(issue);
-      setIssues((current) => [created, ...current.filter((item) => item.id !== created.id)]);
-      toast.success("Report published as Unverified.");
-    }
+    const created = await createPost(issue);
+    setIssues((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+    toast.success("Report published as Unverified.");
     setView("feed");
     setCategory("all");
     setQuery("");
   }
 
   async function handleSessionChange(user: { id: string } | null, profile: AccountProfile | null) {
-    setViewerName(profile?.display_name ?? null);
+    setViewerProfile(profile);
     setSavedIds(user ? await listSavedPostIds() : []);
     if (source === "supabase") await loadFeed();
   }
@@ -328,11 +325,6 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
         </header>
 
         <main className="px-3 py-4 pb-24 md:px-6 md:pb-10 xl:px-8">
-          {source === "mock" ? (
-            <div className="mx-auto mb-4 flex w-full max-w-[1100px] items-center justify-between gap-3 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
-              <span>Using development mock data because Supabase credentials are missing.</span>
-            </div>
-          ) : null}
           {feedError ? (
             <div className="mx-auto mb-4 flex w-full max-w-[1100px] flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm" role="alert">
               <span>Could not load community posts: {feedError}</span>
@@ -351,7 +343,7 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
           ) : null}
 
           {view === "profile" ? (
-            <ProfilePanel issues={issues} savedCount={savedIds.length} viewerName={viewerName} />
+            <ProfilePanel issues={issues} savedCount={savedIds.length} profile={viewerProfile} />
           ) : null}
 
           {view !== "map" && view !== "profile" ? (
@@ -508,13 +500,13 @@ function NeighborhoodBoard({
 function ProfilePanel({
   issues,
   savedCount,
-  viewerName,
+  profile,
 }: {
   issues: Issue[];
   savedCount: number;
-  viewerName: string | null;
+  profile: AccountProfile | null;
 }) {
-  const reported = viewerName ? issues.filter((issue) => issue.reporter.name === viewerName) : [];
+  const reported = profile ? issues.filter((issue) => issue.reporter.name === profile.display_name) : [];
 
   return (
     <div className="mx-auto grid w-full max-w-[1100px] gap-4">
@@ -522,13 +514,14 @@ function ProfilePanel({
         <CardHeader>
           <div className="flex items-center gap-4">
             <Avatar size="lg">
+              <AvatarImage src={profile?.avatar_url ?? undefined} alt="" />
               <AvatarFallback>
                 <UserRoundIcon className="size-5" />
               </AvatarFallback>
             </Avatar>
             <div>
-              <CardTitle>{viewerName ?? "Sign in to view your profile"}</CardTitle>
-              <CardDescription>{viewerName ? "Your reporting activity" : "Use the account button to sign in or create an account."}</CardDescription>
+              <CardTitle>{profile?.display_name ?? "Sign in to view your profile"}</CardTitle>
+              <CardDescription>{profile ? `${profile.account_type === "student" ? "Student" : "Working Professional"} · ${profile.city ?? "City not set"} · ${profile.neighborhood ?? "Neighborhood not set"}` : "Use the account button to sign in or create an account."}</CardDescription>
             </div>
           </div>
         </CardHeader>
@@ -540,7 +533,7 @@ function ProfilePanel({
       </Card>
       {reported.length === 0 ? (
         <div className="rounded-lg border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
-          {viewerName ? "You have not reported an issue yet." : "Sign in to create, save, vote on, and comment on reports."}
+          {profile ? "You have not reported an issue yet. Use the account button to edit your profile." : "Sign in to create, save, vote on, and comment on reports."}
         </div>
       ) : (
         reported.map((issue) => (
@@ -556,6 +549,21 @@ function ProfilePanel({
       )}
     </div>
   );
+}
+
+function isWithinRadius(
+  originLat: number | null | undefined,
+  originLng: number | null | undefined,
+  targetLat: number | null | undefined,
+  targetLng: number | null | undefined,
+  radiusKm: number
+) {
+  if (typeof originLat !== "number" || typeof originLng !== "number" || typeof targetLat !== "number" || typeof targetLng !== "number") return false;
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = radians(targetLat - originLat);
+  const dLng = radians(targetLng - originLng);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(radians(originLat)) * Math.cos(radians(targetLat)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) <= radiusKm;
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

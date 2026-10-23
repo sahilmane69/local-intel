@@ -1,6 +1,6 @@
 # Local Intel database setup
 
-The app runs on mock data until public Supabase keys are present **and** a connection is tested. These files create the schema; they do not connect the UI by themselves.
+The app requires a working Supabase connection for its normal experience. These files create the schema; they do not connect the UI by themselves.
 
 ## 1. Project
 
@@ -12,7 +12,6 @@ Copy `.env.example` to `.env.local` (or `.env`) and fill in values from Project 
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (publishable / legacy anon key)
-- `GEMINI_API_KEY` (optional; analysis currently uses the mock analyzer)
 
 Restart `npm run dev` after changing env vars.
 
@@ -24,6 +23,7 @@ In the SQL editor, run in order:
 2. `supabase/migrations/20261023120001_rls_and_privileges.sql`
 3. `supabase/migrations/20261023120002_storage_post_media.sql`
 4. `supabase/migrations/20261023120003_feed_auth_profile_and_media.sql`
+5. `supabase/migrations/20261023120004_profile_account_and_location.sql`
 
 Or from a machine with the CLI logged in:
 
@@ -31,9 +31,13 @@ Or from a machine with the CLI logged in:
 npx supabase db push
 ```
 
+If a SQL Editor run was interrupted or stopped partway through, use the updated
+migration file and rerun that file in full. Migration `20261023120003` is safe
+to rerun: it recreates only its own constraint, policies, and trigger.
+
 ## 4. Auth
 
-Enable the Email provider under Authentication and add your local and production URLs to the Auth redirect allow-list. New users get a `profiles` row with role `member`. Promote staff in SQL only:
+Enable the Email provider under Authentication and add your local and production URLs to the Auth redirect allow-list. New users must provide a name, account type, city, and neighborhood; the signup trigger creates their `profiles` row with role `member`. Avatar, bio, and precise coordinates are optional. Coordinates are stored only after the person explicitly clicks **Use my location** and saves their profile. Promote staff in SQL only:
 
 ```sql
 update public.profiles
@@ -51,4 +55,4 @@ Upload objects to bucket `post-media` as `{user_id}/{post_id}/{filename}`. Profi
 
 ## 6. Connection status
 
-The feed uses local mock posts only when public Supabase credentials are absent. Run the migrations and complete the manual connection checks before treating the UI as connected.
+The feed never substitutes fake posts for a failed or missing Supabase connection. Run the migrations and complete the manual connection checks before treating the UI as connected.

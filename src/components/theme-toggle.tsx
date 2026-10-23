@@ -1,20 +1,22 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button } from "@/components/ui/button";
 
-function isDarkMode(resolvedTheme: string | undefined) {
-  if (resolvedTheme === "dark") return true;
-  if (resolvedTheme === "light") return false;
-  if (typeof document === "undefined") return false;
-  return document.documentElement.classList.contains("dark");
-}
-
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
-  const dark = isDarkMode(resolvedTheme);
+  // The server snapshot keeps the first client render deterministic; the
+  // browser snapshot then enables the resolved theme without reading document.
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
+
+  const dark = mounted && resolvedTheme === "dark";
   const label = dark ? "Switch to light mode" : "Switch to dark mode";
 
   return (

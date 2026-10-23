@@ -6,12 +6,15 @@ alter table public.posts
   add column if not exists intake_notes text;
 
 alter table public.posts
+  drop constraint if exists posts_tags_limit_check,
   add constraint posts_tags_limit_check check (cardinality(tags) <= 8);
 
 create index if not exists posts_tags_gin_idx on public.posts using gin (tags);
 
 -- Existing Auth users created before the profile trigger was introduced can create
 -- only their own member profile. They cannot choose a staff role.
+drop policy if exists profiles_insert_own_member on public.profiles;
+
 create policy profiles_insert_own_member
 on public.profiles for insert
 to authenticated
@@ -37,6 +40,8 @@ $$;
 
 revoke all on function private.prevent_member_status_update() from public;
 
+drop trigger if exists posts_prevent_member_status_update on public.posts;
+
 create trigger posts_prevent_member_status_update
 before update on public.posts
 for each row execute procedure private.prevent_member_status_update();
@@ -55,10 +60,14 @@ set
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 
+drop policy if exists profile_avatars_public_read on storage.objects;
+
 create policy profile_avatars_public_read
 on storage.objects for select
 to anon, authenticated
 using (bucket_id = 'profile-avatars');
+
+drop policy if exists profile_avatars_owner_insert on storage.objects;
 
 create policy profile_avatars_owner_insert
 on storage.objects for insert
@@ -67,6 +76,8 @@ with check (
   bucket_id = 'profile-avatars'
   and (storage.foldername(name))[1] = (select auth.uid())::text
 );
+
+drop policy if exists profile_avatars_owner_delete on storage.objects;
 
 create policy profile_avatars_owner_delete
 on storage.objects for delete

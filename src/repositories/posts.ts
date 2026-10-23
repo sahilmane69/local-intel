@@ -44,7 +44,7 @@ type FeedRow = {
   comments: Array<{ id: string; post_id: string; parent_id: string | null; body: string; created_at: string; author: { display_name: string } | null }> | null;
   evidence_sources: Array<{ id: string; kind: EvidenceSource["kind"]; label: string; href: string | null; note: string | null; recorded_at: string | null; media_id: string | null }> | null;
   verification_events: Array<{ status: string; notes: string; created_at: string; actor: { display_name: string } | null }> | null;
-  ai_analyses: Array<{ summary: string; suggested_category: string | null; duplicate_hints: Json; evidence_notes: string; sources: Json; checked_at: string; model: string; created_at: string }> | null;
+  ai_analyses: Array<{ summary: string; suggested_category: string | null; duplicate_hints: Json; evidence_notes: string; sources: Json; checked_at: string; model: string; created_at: string; assessment: "unverified" | "community-corroborated" | null; confidence: "low" | "medium" | "high" | null; reasoning: string | null; known_facts: string | null; uncertainties: string | null; next_steps: string | null; analysis_comment: string | null }> | null;
 };
 
 const feedSelect = `
@@ -55,7 +55,7 @@ const feedSelect = `
   comments(id, post_id, parent_id, body, created_at, author:profiles!comments_author_id_fkey(display_name)),
   evidence_sources(id, kind, label, href, note, recorded_at, media_id),
   verification_events(status, notes, created_at, actor:profiles!verification_events_actor_id_fkey(display_name)),
-  ai_analyses(summary, suggested_category, duplicate_hints, evidence_notes, sources, checked_at, model, created_at)
+  ai_analyses(summary, suggested_category, duplicate_hints, evidence_notes, sources, checked_at, model, created_at, assessment, confidence, reasoning, known_facts, uncertainties, next_steps, analysis_comment)
 `;
 
 function mapFeedRow(row: FeedRow): Issue {
@@ -89,7 +89,7 @@ function mapFeedRow(row: FeedRow): Issue {
       id: comment.id, postId: comment.post_id, parentId: comment.parent_id, body: comment.body, createdAt: comment.created_at,
       author: { name: comment.author?.display_name ?? "Local neighbor", initials: initials(comment.author?.display_name ?? "Local neighbor") },
     })),
-    aiInsight: latestAnalysis ? { summary: latestAnalysis.summary, suggestedCategory: latestAnalysis.suggested_category ? asCategory(latestAnalysis.suggested_category) : null, duplicateHints, evidenceNotes: latestAnalysis.evidence_notes, generatedAt: latestAnalysis.created_at, checkedAt: latestAnalysis.checked_at, model: latestAnalysis.model, sources: Array.isArray(latestAnalysis.sources) ? latestAnalysis.sources.filter((source): source is { title: string; url: string; publishedAt?: string | null } => typeof source === "object" && source !== null && typeof (source as { title?: unknown }).title === "string" && typeof (source as { url?: unknown }).url === "string") : [] } : null,
+    aiInsight: latestAnalysis ? { summary: latestAnalysis.summary, suggestedCategory: latestAnalysis.suggested_category ? asCategory(latestAnalysis.suggested_category) : null, duplicateHints, evidenceNotes: latestAnalysis.evidence_notes, generatedAt: latestAnalysis.created_at, checkedAt: latestAnalysis.checked_at, model: latestAnalysis.model, assessment: latestAnalysis.assessment, confidence: latestAnalysis.confidence, reasoning: latestAnalysis.reasoning, knownFacts: latestAnalysis.known_facts, uncertainties: latestAnalysis.uncertainties, nextSteps: latestAnalysis.next_steps, analysisComment: latestAnalysis.analysis_comment, sources: Array.isArray(latestAnalysis.sources) ? latestAnalysis.sources.filter((source): source is { title: string; url: string; publishedAt?: string | null } => typeof source === "object" && source !== null && typeof (source as { title?: unknown }).title === "string" && typeof (source as { url?: unknown }).url === "string") : [] } : null,
   };
 }
 

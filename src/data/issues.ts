@@ -15,7 +15,9 @@ export type EvidenceSource = { id: string; kind: EvidenceSourceKind; label: stri
 export type Verification = { status: VerificationStatus; notes: string; assessedAt: string; assessedBy: string; sources: EvidenceSource[] };
 export type PostComment = { id: string; postId: string; parentId: string | null; body: string; createdAt: string; author: { name: string; initials: string } };
 export type AiSource = { title: string; url: string; publishedAt?: string | null };
-export type AiInsight = { summary: string; suggestedCategory?: Category | null; duplicateHints: string[]; evidenceNotes: string; generatedAt: string; checkedAt?: string | null; model: string; sources?: AiSource[] };
+export type AiAssessment = "unverified" | "community-corroborated";
+export type AiConfidence = "low" | "medium" | "high";
+export type AiInsight = { summary: string; suggestedCategory?: Category | null; duplicateHints: string[]; evidenceNotes: string; generatedAt: string; checkedAt?: string | null; model: string; sources?: AiSource[]; assessment?: AiAssessment | null; confidence?: AiConfidence | null; reasoning?: string | null; knownFacts?: string | null; uncertainties?: string | null; nextSteps?: string | null; analysisComment?: string | null };
 export type Issue = {
   id: string; authorId: string; title: string; description: string; category: Category; status: Status; city?: string | null; neighborhood: Neighborhood; address: string;
   upvotes: number; commentCount: number; reporter: { name: string; initials: string }; createdAt: string; tags?: string[];

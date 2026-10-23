@@ -155,14 +155,14 @@ export function CommunityFeed({ initialFeed }: { initialFeed?: FeedResult }) {
     setQuery("");
   }
 
-  async function analyzePost(postId: string) {
+  async function analyzePost(postId: string, refresh = false) {
     setAnalyzingPostId(postId);
     try {
-      const response = await fetch("/api/posts/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId }) });
-      const result = await response.json().catch(() => null) as { error?: string } | null;
+      const response = await fetch("/api/posts/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ postId, refresh }) });
+      const result = await response.json().catch(() => null) as { error?: string; cached?: boolean } | null;
       if (!response.ok) throw new Error(result?.error ?? "Could not analyze this report.");
       await loadFeed();
-      toast.success("AI analysis added as related public context, not verification.");
+      toast.success(result?.cached ? "Using the recent AI analysis." : "AI analysis added as context, not official verification.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not analyze this report.");
     } finally {
@@ -422,7 +422,7 @@ function IssueList({
   onAddComment: (postId: string, body: string, parentId: string | null) => void;
   viewerId: string | null;
   analyzingPostId: string | null;
-  onAnalyze: (postId: string) => void;
+  onAnalyze: (postId: string, refresh: boolean) => void;
   loading: boolean;
   emptyLabel: string;
 }) {
@@ -455,7 +455,7 @@ function IssueList({
           onToggleSave={onToggleSave}
           onUpvote={onUpvote}
           onAddComment={onAddComment}
-          canAnalyze={viewerId === issue.authorId}
+          canAnalyze={viewerId !== null}
           analyzing={analyzingPostId === issue.id}
           onAnalyze={onAnalyze}
         />

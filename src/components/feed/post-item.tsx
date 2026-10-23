@@ -29,7 +29,7 @@ type PostItemProps = {
   onAddComment: (postId: string, body: string, parentId: string | null) => void;
   canAnalyze?: boolean;
   analyzing?: boolean;
-  onAnalyze?: (postId: string) => void;
+  onAnalyze?: (postId: string, refresh: boolean) => void;
 };
 
 export function PostItem({
@@ -145,7 +145,7 @@ export function PostItem({
           verification={post.verification}
           attachments={attachments}
         />
-        <AiInsights insight={post.aiInsight} canAnalyze={canAnalyze} analyzing={analyzing} onAnalyze={() => onAnalyze?.(post.id)} />
+        <AiInsights insight={post.aiInsight} canAnalyze={canAnalyze} analyzing={analyzing} onAnalyze={(refresh) => onAnalyze?.(post.id, refresh)} />
       </div>
     </article>
   );
